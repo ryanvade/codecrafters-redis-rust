@@ -20,23 +20,27 @@ async fn main() {
 async fn process_request(mut socket: TcpStream) {
     eprintln!("accepted new connection");
 
-    let mut buf = vec![0; 16];
-    let n = socket.read(&mut buf).await.expect("cannot read from socket");
-    if n == 0 {
-        return;
+    loop {
+        let mut buf = vec![0; 1024];
+        match socket.read(&mut buf).await {
+            Ok(n) => {
+                if n != 0 {
+                    let s = match str::from_utf8(&buf) {
+                        Ok(v) => v,
+                        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+                    };
+
+                    eprintln!("received {:?}", s);
+
+                    socket.write_all(b"+PONG\r\n").await.expect("cannot write pong response");
+
+                    socket.flush().await.expect("cannot flush socket");
+                }
+            },
+            Err(_) => {
+                break
+            }
+        }
     }
-
-    let s = match str::from_utf8(&buf) {
-        Ok(v) => v,
-        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    };
-
-    eprintln!("received {:?}", s);
-
-    if s.to_lowercase().contains("ping") {
-        socket.write_all(b"+PONG\r\n").await.expect("cannot write pong response");
-    }
-
-    socket.flush().await.expect("cannot flush");
-    socket.shutdown().await.expect("cannot shutdown");
+    eprint!("end of process_request")
 }
