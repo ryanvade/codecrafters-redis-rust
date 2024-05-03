@@ -5,14 +5,19 @@ use anyhow::anyhow;
 
 use crate::tokenizer::Token;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ParserValue {
     SimpleString(String),
     BulkString(String),
     Array(Vec<ParserValue>),
+    NullBulkString,
 }
 
 impl ParserValue {
+    pub fn is_string(self: &ParserValue) -> bool {
+        matches!(self, ParserValue::SimpleString(_)) || matches!(self, ParserValue::BulkString(_))
+    }
+
     pub fn is_array(self: &ParserValue) -> bool {
         matches!(self, ParserValue::Array(_))
     }
@@ -58,6 +63,13 @@ impl ParserValue {
                 for parser_value in arr {
                     tokens.append(&mut parser_value.to_tokens());
                 }
+                return tokens;
+            }
+            ParserValue::NullBulkString => {
+                let mut tokens: Vec<Token> = Vec::with_capacity(3);
+                tokens.push(Token::Dollar);
+                tokens.push(Token::Number(-1));
+                tokens.push(Token::Separator);
                 return tokens;
             }
             _ => todo!(),

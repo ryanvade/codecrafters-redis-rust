@@ -1,28 +1,43 @@
 use std::str;
+use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc::Sender;
 
-use redis_starter_rust::parser::ParserValue;
-use redis_starter_rust::{parser, tokenizer};
+use redis_starter_rust::{data_core, parser, tokenizer};
+use redis_starter_rust::data_core::Command;
+use redis_starter_rust::tokenizer::Token;
 
 #[tokio::main]
 async fn main() {
     eprintln!("Logs from your program will appear here!");
+
+    let (tx, rx) = mpsc::channel::<Command>(32);
+
+    let mut data_core = data_core::DataCore::new(rx);
+
+    let _ = tokio::spawn(async move {
+        data_core.process_command().await;
+    });
 
     let listener = TcpListener::bind("0.0.0.0:6379")
         .await
         .expect("cannot listen on port 6379");
 
     loop {
+        let tx = tx.clone();
         let (socket, _) = listener.accept().await.expect("cannot accept connections");
         tokio::spawn(async move {
-            process_request(socket).await;
+            process_request(socket, &tx).await;
         });
     }
+
+    // manager.await.expect("manager thread ran");
 }
 
-async fn process_request(mut socket: TcpStream) {
+async fn process_request<'c>(mut socket: TcpStream, core_tx: &Sender<Command>) {
     eprintln!("accepted new connection");
 
     loop {
@@ -54,47 +69,29 @@ async fn process_request(mut socket: TcpStream) {
                         break;
                     }
 
+                    let (tx, rx) = oneshot::channel::<Vec<Token>>();
+
                     let parser_values = parser_value
                         .to_vec()
                         .expect("could not get vec of parser values");
-                    let command = parser_values
-                        .first()
-                        .expect("parser values does not have a first item");
 
-                    match command.to_string().unwrap().to_lowercase().as_str() {
-                        "ping" => {
-                            let parser_value = ParserValue::SimpleString(String::from("PONG"));
-                            let response_tokens = parser_value.to_tokens();
-                            eprintln!("PING response_tokens {:?}", response_tokens);
-                            let response = tokenizer::serialize_tokens(&response_tokens)
-                                .expect("cannot serialize response tokens");
-                            socket
-                                .write_all(response.as_bytes())
-                                .await
-                                .expect("cannot write response to tcpstream");
-                        }
-                        "echo" => {
-                            let mut tokens: Vec<tokenizer::Token> = Vec::new();
-                            let mut iter = parser_values.iter();
-                            let _ = iter.next();
-                            // TODO: how to handle multiple strings passed to echo?
-                            while let Some(echo_str_token) = iter.next() {
-                                if let Some(echo_str) = echo_str_token.to_string() {
-                                    let parser_value = ParserValue::BulkString(echo_str);
-                                    let mut response_tokens = parser_value.to_tokens();
-                                    tokens.append(&mut response_tokens);
-                                }
-                            }
-                            let response = tokenizer::serialize_tokens(&tokens)
-                                .expect("cannot serialize response tokens");
-                            socket
-                                .write_all(response.as_bytes())
-                                .await
-                                .expect("cannot write response to tcpstream");
-                        }
-                        _ => todo!(),
-                    }
+                    let command = Command::new(Arc::new(parser_values.clone()), tx);
+                    core_tx
+                        .send(command)
+                        .await
+                        .expect("should be able to send commands to data core");
 
+                    let response = rx
+                        .await
+                        .expect("should be able to receive a response from data core");
+
+                    let response = tokenizer::serialize_tokens(&response)
+                        .expect("cannot serialize response tokens");
+
+                    socket
+                        .write_all(response.as_bytes())
+                        .await
+                        .expect("cannot write response to tcpstream");
                     socket.flush().await.expect("cannot flush socket");
                 }
             }
