@@ -157,8 +157,10 @@ fn tokens_to_bulk_string(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Resu
     let str_token = token_iter
         .next()
         .expect("should have a forth token for simple string");
-    if !str_token.is_string() {
-        return Err(anyhow!("forth token in bulk string must be a string"));
+    if !str_token.is_string() && !str_token.is_number() {
+        return Err(anyhow!(
+            "forth token in bulk string must be a string or number"
+        ));
     }
     let separator_token = token_iter
         .next()
@@ -166,7 +168,11 @@ fn tokens_to_bulk_string(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Resu
     if !separator_token.is_separator() {
         return Err(anyhow!("fifth token in bulk string must be a separator"));
     }
-    let s = str_token.to_string();
+    let s = if str_token.is_string() {
+        str_token.to_string()
+    } else {
+        Some(str_token.to_i64().unwrap().to_string())
+    };
     if s.is_none() {
         return Err(anyhow!("could not get string from token for bulk token"));
     }
@@ -219,7 +225,9 @@ fn tokens_to_array(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Result<Par
                 if let Ok(bulk_string) = bulk_string {
                     values.push(bulk_string);
                 } else {
-                    return Err(bulk_string.err().unwrap());
+                    let err = bulk_string.err().unwrap();
+                    eprintln!("{:?}", err);
+                    return Err(err);
                 }
             }
             Token::Asterisk => {

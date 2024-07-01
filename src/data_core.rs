@@ -66,7 +66,7 @@ impl DataCore {
                     command.response_channel.send(tokens).unwrap();
                 }
                 "set" => {
-                    let mut iter = command.arguments.iter();
+                    let mut iter = command.arguments.iter().peekable();
                     let _ = iter.next();
                     let key = iter.next().expect("set command should have a key");
                     let value = iter.next().expect("set command should have a value");
@@ -82,10 +82,19 @@ impl DataCore {
                             let res = res.expect("some value should exist");
                             eprintln!("Previous Value: {:?}", res);
                         }
+
+                        if iter.peek().is_some_and(|pv| pv.is_string()) {
+                            let px = iter.next().unwrap().to_string().unwrap();
+                            if iter.peek().is_some_and(|len| len.is_string()) {
+                                let len = iter.next().unwrap().to_string().unwrap();
+                                let len = len.parse::<i64>().expect("len string should be i64");
+                                eprintln!("{:?} {:?}", px, len);
+                            }
+                        }
                     }
                     let parser_value = ParserValue::SimpleString(String::from("OK"));
                     let response_tokens = parser_value.to_tokens();
-                    eprintln!("PING response_tokens {:?}", response_tokens);
+                    eprintln!("SET response_tokens {:?}", response_tokens);
                     command.response_channel.send(response_tokens).unwrap();
                 }
                 "get" => {
@@ -110,8 +119,37 @@ impl DataCore {
                         // TODO: return error message here
                     }
                 }
+                "command" => {
+                    let parser_value = ParserValue::SimpleString(String::from(""));
+                    let response = parser_value.to_tokens();
+                    eprintln!("COMMAND response_tokens {:?}", response);
+                    command.response_channel.send(response).unwrap();
+                }
                 _ => todo!(),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use tokio::sync::{mpsc, oneshot};
+
+    use crate::data_core::{Command, DataCore};
+    use crate::parser::ParserValue;
+    use crate::tokenizer::Token;
+
+    #[test]
+    fn test_responds_to_ping_command() {
+        let (tx, rx) = oneshot::channel::<Vec<Token>>();
+        let command = Command::new(
+            Arc::new(vec![ParserValue::BulkString("PING".to_string())]),
+            tx,
+        );
+
+        let (command_tx, command_rx) = mpsc::channel::<Command>(32);
+        let data_core = DataCore::new(command_rx);
     }
 }

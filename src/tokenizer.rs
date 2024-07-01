@@ -1,4 +1,3 @@
-use std::iter;
 use std::str;
 
 use anyhow::anyhow;
@@ -88,12 +87,18 @@ pub fn parse_resp_tokens_from_str(input: &str) -> anyhow::Result<Vec<Token>> {
             '>' => tokens.push(Token::GreaterThan),
             '0'..='9' => {
                 // TODO: Support BIG numbers
-                let n: i64 = iter::once(ch)
-                    .chain(iter.by_ref().next_if(|s| s.is_ascii_digit()))
-                    .collect::<String>()
-                    .parse()
-                    .unwrap();
-                tokens.push(Token::Number(n));
+                let mut s = String::from(ch);
+                let mut rest = Vec::<char>::new();
+                while iter.peek().is_some_and(|c| c.is_ascii_digit()) {
+                    let c = iter.next().unwrap();
+                    rest.push(c)
+                }
+                if !rest.is_empty() {
+                    let rest = rest.iter().collect::<String>();
+                    s = s + &rest;
+                }
+
+                tokens.push(Token::Number(s.parse().unwrap()));
             }
             '\r' => {
                 if iter.peek().is_some_and(|s| *s == '\n') {
@@ -160,4 +165,26 @@ pub fn serialize_tokens(tokens: &Vec<Token>) -> anyhow::Result<String> {
     eprintln!("Serialized Tokens: {:?}", s);
 
     return Ok(s);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tokenizer::parse_resp_tokens_from_str;
+
+    #[test]
+    fn test_parses_simple_strings() {
+        let input_string = "+OK\r\n";
+        let tokens = parse_resp_tokens_from_str(input_string);
+        assert!(tokens.is_ok());
+        let tokens = tokens.unwrap();
+        assert_eq!(3, tokens.len());
+        let token = tokens.first().unwrap();
+        assert!(token.is_plus());
+        let token = tokens.get(1).unwrap();
+        assert!(token.is_string());
+        let token = token.to_string().unwrap();
+        assert_eq!("OK".to_string(), token);
+        let token = tokens.get(2).unwrap();
+        assert!(token.is_separator());
+    }
 }
