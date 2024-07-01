@@ -1,6 +1,7 @@
 use std::str;
 use std::sync::Arc;
 
+use clap::Parser;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
@@ -10,9 +11,18 @@ use redis_starter_rust::{data_core, parser, tokenizer};
 use redis_starter_rust::data_core::Command;
 use redis_starter_rust::tokenizer::Token;
 
+#[derive(clap::Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value = "6379")]
+    port: u64,
+}
+
 #[tokio::main]
 async fn main() {
     eprintln!("Logs from your program will appear here!");
+
+    let args = Args::parse();
 
     let (tx, rx) = mpsc::channel::<Command>(32);
 
@@ -22,7 +32,9 @@ async fn main() {
         data_core.process_command().await;
     });
 
-    let listener = TcpListener::bind("0.0.0.0:6379")
+    let addr = format!("0.0.0.0:{}", args.port.to_string());
+
+    let listener = TcpListener::bind(addr)
         .await
         .expect("cannot listen on port 6379");
 
@@ -33,8 +45,6 @@ async fn main() {
             process_request(socket, &tx).await;
         });
     }
-
-    // manager.await.expect("manager thread ran");
 }
 
 async fn process_request<'c>(mut socket: TcpStream, core_tx: &Sender<Command>) {
