@@ -23,4 +23,6 @@ anyhow = "1.0.82"
 bytes = "1.6.0"                                     # helps manage buffers
 thiserror = "1.0.59"                                # error handling
 tokio = { version = "1.37.0", features = ["full"] }
-itertools = "0.12.1" # async networking
+itertools = "0.12.1"
+chrono = "0.4.38"
+time = "0.3.36" # async networking

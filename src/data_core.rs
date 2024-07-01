@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::ops::Add;
 use std::sync::Arc;
 
+use chrono::{TimeDelta, Utc};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender;
 
@@ -24,8 +26,40 @@ impl Command {
 }
 
 #[derive(Debug)]
+struct DataValue {
+    parser_value: ParserValue,
+    expiry_in_nanoseconds: Option<i64>,
+}
+
+impl DataValue {
+    pub fn new(parser_value: ParserValue) -> DataValue {
+        DataValue {
+            parser_value,
+            expiry_in_nanoseconds: None,
+        }
+    }
+
+    pub fn set_expiry(self: &mut DataValue, milliseconds: i64) {
+        let nano_seconds = Utc::now()
+            .add(TimeDelta::milliseconds(milliseconds))
+            .timestamp_nanos_opt()
+            .unwrap();
+        self.expiry_in_nanoseconds = Some(nano_seconds)
+    }
+
+    pub fn has_expired(self: &DataValue) -> bool {
+        if self.expiry_in_nanoseconds.is_none() {
+            return false;
+        }
+        let expiry_in_nanoseconds = self.expiry_in_nanoseconds.unwrap();
+        let now = Utc::now().timestamp_nanos_opt().unwrap();
+        now > expiry_in_nanoseconds
+    }
+}
+
+#[derive(Debug)]
 pub struct DataCore {
-    data_set: HashMap<String, ParserValue>,
+    data_set: HashMap<String, DataValue>,
     rx: Receiver<Command>,
 }
 
@@ -73,51 +107,71 @@ impl DataCore {
                     eprintln!("Key: {:?}", key);
                     eprintln!("Value: {:?}", value);
 
-                    if key.is_string() {
-                        let key = key
-                            .to_string()
-                            .expect("string parser value should be convertable to string");
-                        let res = self.data_set.insert(key.clone(), value.clone());
-                        if res.is_some() {
-                            let res = res.expect("some value should exist");
-                            eprintln!("Previous Value: {:?}", res);
-                        }
+                    if !key.is_string() {
+                        let response_value = ParserValue::NullBulkString;
+                        return command
+                            .response_channel
+                            .send(response_value.to_tokens())
+                            .unwrap();
+                    }
 
-                        if iter.peek().is_some_and(|pv| pv.is_string()) {
-                            let px = iter.next().unwrap().to_string().unwrap();
-                            if iter.peek().is_some_and(|len| len.is_string()) {
-                                let len = iter.next().unwrap().to_string().unwrap();
-                                let len = len.parse::<i64>().expect("len string should be i64");
-                                eprintln!("{:?} {:?}", px, len);
-                            }
+                    let key = key
+                        .to_string()
+                        .expect("string parser value should be convertable to string");
+                    let mut data_value = DataValue::new(value.clone());
+
+                    if iter.peek().is_some_and(|pv| pv.is_string()) {
+                        let _ = iter.next().unwrap().to_string().unwrap();
+                        if iter.peek().is_some_and(|len| len.is_string()) {
+                            let len = iter.next().unwrap().to_string().unwrap();
+                            let len = len.parse::<i64>().expect("len string should be i64");
+                            data_value.set_expiry(len)
                         }
                     }
+                    self.data_set.insert(key, data_value);
                     let parser_value = ParserValue::SimpleString(String::from("OK"));
                     let response_tokens = parser_value.to_tokens();
-                    eprintln!("SET response_tokens {:?}", response_tokens);
                     command.response_channel.send(response_tokens).unwrap();
                 }
                 "get" => {
                     let mut iter = command.arguments.iter();
                     let _ = iter.next();
-                    let key = iter.next().expect("set command should have a key");
-                    if key.is_string() {
-                        let key = key
-                            .to_string()
-                            .expect("string parser value should be convertable to a string");
-                        let value = self.data_set.get(&key);
-                        if let Some(value) = value {
-                            command.response_channel.send(value.to_tokens()).unwrap();
-                        } else {
-                            let response_value = ParserValue::NullBulkString;
-                            command
-                                .response_channel
-                                .send(response_value.to_tokens())
-                                .unwrap()
-                        }
-                    } else {
-                        // TODO: return error message here
+                    let key = iter.next().expect("get command should have a key");
+                    if !key.is_string() {
+                        let response_value = ParserValue::NullBulkString;
+                        return command
+                            .response_channel
+                            .send(response_value.to_tokens())
+                            .unwrap();
                     }
+
+                    let key = key
+                        .to_string()
+                        .expect("string parser value should be convertable to a string");
+                    let value = self.data_set.get(&key);
+                    if value.is_none() {
+                        let response_value = ParserValue::NullBulkString;
+                        return command
+                            .response_channel
+                            .send(response_value.to_tokens())
+                            .unwrap();
+                    }
+                    let value = value.unwrap();
+                    let now = Utc::now().timestamp_nanos_opt().unwrap();
+                    eprintln!("{:?} {:?}", value, now);
+                    if value.has_expired() {
+                        let _ = self.data_set.remove(&key);
+                        let response_value = ParserValue::NullBulkString;
+                        return command
+                            .response_channel
+                            .send(response_value.to_tokens())
+                            .unwrap();
+                    }
+
+                    command
+                        .response_channel
+                        .send(value.parser_value.to_tokens())
+                        .unwrap()
                 }
                 "command" => {
                     let parser_value = ParserValue::SimpleString(String::from(""));
@@ -127,7 +181,14 @@ impl DataCore {
                 }
                 _ => todo!(),
             }
+
+            self.remove_expired_values()
         }
+    }
+
+    pub fn remove_expired_values(self: &mut DataCore) {
+        eprintln!("Remove Expired Values");
+        self.data_set.retain(|_, v| !v.has_expired())
     }
 }
 
