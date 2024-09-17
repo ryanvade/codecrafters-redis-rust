@@ -342,6 +342,37 @@ impl DataCore {
             String::from_utf8(buff.to_vec())
         );
 
+        let psync = ParserValue::Array(vec![
+            ParserValue::SimpleString("PSYNC".to_string()),
+            ParserValue::SimpleString("?".to_string()),
+            ParserValue::SimpleString("-1".to_string()),
+        ]);
+        let psync = tokenizer::serialize_tokens(&psync.to_tokens())
+            .expect("psync parser value array should be serializable");
+        stream.write_all(psync.into_bytes().as_ref()).await?;
+        stream.flush().await?;
+
+        let mut buff = [0; 58];
+        loop {
+            let response = stream.read(&mut buff).await?;
+            eprintln!("PSYNC Response Length: {:?}", response);
+            if response >= 56 {
+                break;
+            }
+        }
+        eprintln!(
+            "Initialize capabilities Response: {:?}",
+            String::from_utf8(buff.to_vec())
+        );
+
+        let full_resync_response =
+            String::from_utf8(buff.to_vec()).expect("full resync response should be stringable");
+        let full_resync_response = full_resync_response.splitn(3, ' ').collect::<Vec<_>>();
+        let replica_id = full_resync_response
+            .get(1)
+            .expect("full resync response should have a replica_id");
+        eprintln!("Replica Id: {:?}", replica_id);
+
         Ok(())
     }
 
