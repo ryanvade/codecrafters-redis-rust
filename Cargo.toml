@@ -27,3 +27,4 @@ itertools = "0.12.1"
 chrono = "0.4.38"
 time = "0.3.36" # async networking
 clap = { version = "4.5.8", features = ["derive"] }
+rand = "0.8.5"

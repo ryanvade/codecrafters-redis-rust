@@ -1,4 +1,6 @@
 use chrono::{TimeDelta, Utc};
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Add;
@@ -94,7 +96,11 @@ impl DataCore {
             rx,
             replication_role,
             connected_slaves: 0,
-            master_replid: "".to_string(),
+            master_replid: thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(40)
+                .map(char::from)
+                .collect(),
             master_reploffset: 0,
             second_reploffset: -1,
             repl_backlog_active: 0,
