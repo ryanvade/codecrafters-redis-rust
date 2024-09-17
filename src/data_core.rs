@@ -249,6 +249,12 @@ impl DataCore {
                         .send(response_value.to_tokens())
                         .unwrap();
                 }
+                "replconf" => {
+                    let parser_value = ParserValue::SimpleString(String::from("OK"));
+                    let response = parser_value.to_tokens();
+                    eprintln!("REPLCONF Response {:?}", response);
+                    command.response_channel.send(response).unwrap();
+                }
                 _ => todo!(),
             }
 
