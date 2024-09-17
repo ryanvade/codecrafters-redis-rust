@@ -4,18 +4,21 @@ use std::sync::Arc;
 use clap::Parser;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, oneshot};
 use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc, oneshot};
 
-use redis_starter_rust::{data_core, parser, tokenizer};
-use redis_starter_rust::data_core::Command;
+use redis_starter_rust::data_core::{Command, ReplicationRole};
 use redis_starter_rust::tokenizer::Token;
+use redis_starter_rust::{data_core, parser, tokenizer};
 
 #[derive(clap::Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(short, long, default_value = "6379")]
     port: u64,
+
+    #[arg(short, long)]
+    replicaof: Option<String>,
 }
 
 #[tokio::main]
@@ -24,9 +27,16 @@ async fn main() {
 
     let args = Args::parse();
 
+    let mut replication_role = ReplicationRole::Master;
+
+    if let Some(replicaof) = args.replicaof {
+        eprintln!("Replica of {}: ", replicaof);
+        replication_role = ReplicationRole::Slave;
+    }
+
     let (tx, rx) = mpsc::channel::<Command>(32);
 
-    let mut data_core = data_core::DataCore::new(rx);
+    let mut data_core = data_core::DataCore::new(rx, replication_role);
 
     let _ = tokio::spawn(async move {
         data_core.process_command().await;

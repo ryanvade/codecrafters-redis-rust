@@ -58,7 +58,7 @@ impl DataValue {
 }
 
 #[derive(Debug)]
-enum ReplicationRole {
+pub enum ReplicationRole {
     Master,
     Slave,
 }
@@ -88,11 +88,11 @@ pub struct DataCore {
 }
 
 impl DataCore {
-    pub fn new(rx: Receiver<Command>) -> DataCore {
+    pub fn new(rx: Receiver<Command>, replication_role: ReplicationRole) -> DataCore {
         DataCore {
             data_set: HashMap::new(),
             rx,
-            replication_role: ReplicationRole::Master,
+            replication_role,
             connected_slaves: 0,
             master_replid: "".to_string(),
             master_reploffset: 0,
