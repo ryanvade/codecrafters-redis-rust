@@ -1,8 +1,8 @@
+use chrono::{TimeDelta, Utc};
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Add;
 use std::sync::Arc;
-
-use chrono::{TimeDelta, Utc};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender;
 
@@ -58,9 +58,33 @@ impl DataValue {
 }
 
 #[derive(Debug)]
+enum ReplicationRole {
+    Master,
+    Slave,
+}
+
+impl fmt::Display for ReplicationRole {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ReplicationRole::Master => write!(f, "master"),
+            ReplicationRole::Slave => write!(f, "slave"),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct DataCore {
     data_set: HashMap<String, DataValue>,
     rx: Receiver<Command>,
+    replication_role: ReplicationRole,
+    connected_slaves: i64,
+    master_replid: String,
+    master_reploffset: i64,
+    second_reploffset: i64,
+    repl_backlog_active: i64,
+    repl_backlog_size: i64,
+    repl_backlog_first_byte_offset: i64,
+    repl_backlog_histlen: i64,
 }
 
 impl DataCore {
@@ -68,6 +92,15 @@ impl DataCore {
         DataCore {
             data_set: HashMap::new(),
             rx,
+            replication_role: ReplicationRole::Master,
+            connected_slaves: 0,
+            master_replid: "".to_string(),
+            master_reploffset: 0,
+            second_reploffset: -1,
+            repl_backlog_active: 0,
+            repl_backlog_size: 1048576,
+            repl_backlog_first_byte_offset: 0,
+            repl_backlog_histlen: 0,
         }
     }
 
@@ -178,6 +211,25 @@ impl DataCore {
                     let response = parser_value.to_tokens();
                     eprintln!("COMMAND response_tokens {:?}", response);
                     command.response_channel.send(response).unwrap();
+                }
+                "info" => {
+                    let str = format!(
+                        "# Replication\nrole:{}\nconnected_slaves:{}\nmaster_replid:{}\nmaster_repl_offset:{}\nsecond_repl_offset:{}\nrepl_backlog_active:{}\nrepl_backlog_size:{}\nrepl_backlog_first_byte_offset:{}\nrepl_backlog_histen:{}",
+                        self.replication_role.to_string(),
+                        self.connected_slaves,
+                        self.master_replid,
+                        self.master_reploffset,
+                        self.second_reploffset,
+                        self.repl_backlog_active,
+                        self.repl_backlog_size,
+                        self.repl_backlog_first_byte_offset,
+                        self.repl_backlog_histlen
+                    );
+                    let response_value = ParserValue::BulkString(str);
+                    return command
+                        .response_channel
+                        .send(response_value.to_tokens())
+                        .unwrap();
                 }
                 _ => todo!(),
             }
