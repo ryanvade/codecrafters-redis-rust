@@ -261,7 +261,10 @@ impl DataCore {
         self.data_set.retain(|_, v| !v.has_expired())
     }
 
-    pub async fn initialize_slaves(self: &mut DataCore) -> anyhow::Result<(), Box<dyn Error>> {
+    pub async fn initialize_slaves(
+        self: &mut DataCore,
+        slave_port: u64,
+    ) -> anyhow::Result<(), Box<dyn Error>> {
         let ping = ParserValue::Array(vec![ParserValue::SimpleString("PING".to_string())]);
         let master_connection_string = format!(
             "{}:{}",
@@ -269,15 +272,74 @@ impl DataCore {
             self.master_port.unwrap()
         );
         eprintln!("Master connection string: {:?}", master_connection_string);
+
         let mut stream = TcpStream::connect(master_connection_string).await?;
+        stream.writable().await?;
+
         let ping = tokenizer::serialize_tokens(&ping.to_tokens())
             .expect("ping parser value array should be serializable");
         stream.write_all(ping.into_bytes().as_ref()).await?;
-        let mut buff: Vec<u8> = vec![];
-        stream.read(&mut buff).await?;
+        stream.flush().await?;
+
+        let mut buff = [0; 8];
+        loop {
+            let response = stream.read(&mut buff).await?;
+            eprintln!("Ping Response Length: {:?}", response);
+            if response == 7 {
+                break;
+            }
+        }
         eprintln!(
             "Initialize Slaves Ping Response: {:?}",
-            String::from_utf8(buff)
+            String::from_utf8(buff.to_vec())
+        );
+
+        let listening_port = ParserValue::Array(vec![
+            ParserValue::SimpleString("REPLCONF".to_string()),
+            ParserValue::SimpleString("listening-port".to_string()),
+            ParserValue::SimpleString(slave_port.to_string()),
+        ]);
+        let listening_port = tokenizer::serialize_tokens(&listening_port.to_tokens())
+            .expect("listening-port parser value array should be serializable");
+        stream
+            .write_all(listening_port.into_bytes().as_ref())
+            .await?;
+        stream.flush().await?;
+
+        let mut buff = [0; 8];
+        loop {
+            let response = stream.read(&mut buff).await?;
+            eprintln!("Listening Port Response Length: {:?}", response);
+            if response == 5 {
+                break;
+            }
+        }
+        eprintln!(
+            "Initialize Slave listening-port Response: {:?}",
+            String::from_utf8(buff.to_vec())
+        );
+
+        let capabilities = ParserValue::Array(vec![
+            ParserValue::SimpleString("REPLCONF".to_string()),
+            ParserValue::SimpleString("capa".to_string()),
+            ParserValue::SimpleString("psync2".to_string()),
+        ]);
+        let capabilities = tokenizer::serialize_tokens(&capabilities.to_tokens())
+            .expect("capabilities parser value array should be serializable");
+        stream.write_all(capabilities.into_bytes().as_ref()).await?;
+        stream.flush().await?;
+
+        let mut buff = [0; 8];
+        loop {
+            let response = stream.read(&mut buff).await?;
+            eprintln!("Capa Response Length: {:?}", response);
+            if response == 5 {
+                break;
+            }
+        }
+        eprintln!(
+            "Initialize capabilities Response: {:?}",
+            String::from_utf8(buff.to_vec())
         );
 
         Ok(())

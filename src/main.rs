@@ -32,7 +32,7 @@ async fn main() {
     let mut master_port: Option<u64> = None;
 
     if let Some(replicaof) = args.replicaof {
-        eprintln!("Replica of {}: ", replicaof);
+        eprintln!("Replica of {}", replicaof);
         replication_role = ReplicationRole::Slave;
         let (master_host_str, master_host_port_str) = replicaof
             .split_once(' ')
@@ -47,7 +47,7 @@ async fn main() {
 
     if data_core.is_slave() {
         data_core
-            .initialize_slaves()
+            .initialize_slaves(args.port)
             .await
             .expect("should be able to initialize slaves");
     }
