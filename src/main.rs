@@ -28,15 +28,29 @@ async fn main() {
     let args = Args::parse();
 
     let mut replication_role = ReplicationRole::Master;
+    let mut master_host: Option<String> = None;
+    let mut master_port: Option<u64> = None;
 
     if let Some(replicaof) = args.replicaof {
         eprintln!("Replica of {}: ", replicaof);
         replication_role = ReplicationRole::Slave;
+        let (master_host_str, master_host_port_str) = replicaof
+            .split_once(' ')
+            .expect("replicaof split should have two values");
+        master_host = Some(master_host_str.to_string());
+        master_port = Some(master_host_port_str.parse::<u64>().unwrap());
     }
 
     let (tx, rx) = mpsc::channel::<Command>(32);
 
-    let mut data_core = data_core::DataCore::new(rx, replication_role);
+    let mut data_core = data_core::DataCore::new(rx, replication_role, master_host, master_port);
+
+    if data_core.is_slave() {
+        data_core
+            .initialize_slaves()
+            .await
+            .expect("should be able to initialize slaves");
+    }
 
     let _ = tokio::spawn(async move {
         data_core.process_command().await;

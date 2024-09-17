@@ -2,9 +2,12 @@ use chrono::{TimeDelta, Utc};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
+use std::error::Error;
 use std::fmt;
 use std::ops::Add;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender;
 
@@ -59,7 +62,7 @@ impl DataValue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ReplicationRole {
     Master,
     Slave,
@@ -87,10 +90,17 @@ pub struct DataCore {
     repl_backlog_size: i64,
     repl_backlog_first_byte_offset: i64,
     repl_backlog_histlen: i64,
+    master_host: Option<String>,
+    master_port: Option<u64>,
 }
 
 impl DataCore {
-    pub fn new(rx: Receiver<Command>, replication_role: ReplicationRole) -> DataCore {
+    pub fn new(
+        rx: Receiver<Command>,
+        replication_role: ReplicationRole,
+        master_host: Option<String>,
+        master_port: Option<u64>,
+    ) -> DataCore {
         DataCore {
             data_set: HashMap::new(),
             rx,
@@ -107,6 +117,8 @@ impl DataCore {
             repl_backlog_size: 1048576,
             repl_backlog_first_byte_offset: 0,
             repl_backlog_histlen: 0,
+            master_host,
+            master_port,
         }
     }
 
@@ -248,6 +260,32 @@ impl DataCore {
         eprintln!("Remove Expired Values");
         self.data_set.retain(|_, v| !v.has_expired())
     }
+
+    pub async fn initialize_slaves(self: &mut DataCore) -> anyhow::Result<(), Box<dyn Error>> {
+        let ping = ParserValue::Array(vec![ParserValue::SimpleString("PING".to_string())]);
+        let master_connection_string = format!(
+            "{}:{}",
+            self.master_host.as_ref().unwrap(),
+            self.master_port.unwrap()
+        );
+        eprintln!("Master connection string: {:?}", master_connection_string);
+        let mut stream = TcpStream::connect(master_connection_string).await?;
+        let ping = tokenizer::serialize_tokens(&ping.to_tokens())
+            .expect("ping parser value array should be serializable");
+        stream.write_all(ping.into_bytes().as_ref()).await?;
+        let mut buff: Vec<u8> = vec![];
+        stream.read(&mut buff).await?;
+        eprintln!(
+            "Initialize Slaves Ping Response: {:?}",
+            String::from_utf8(buff)
+        );
+
+        Ok(())
+    }
+
+    pub fn is_slave(self: &DataCore) -> bool {
+        self.replication_role == ReplicationRole::Slave
+    }
 }
 
 #[cfg(test)]
@@ -256,7 +294,7 @@ mod tests {
 
     use tokio::sync::{mpsc, oneshot};
 
-    use crate::data_core::{Command, DataCore};
+    use crate::data_core::{Command, DataCore, ReplicationRole};
     use crate::parser::ParserValue;
     use crate::tokenizer::Token;
 
@@ -269,6 +307,6 @@ mod tests {
         );
 
         let (command_tx, command_rx) = mpsc::channel::<Command>(32);
-        let data_core = DataCore::new(command_rx);
+        let data_core = DataCore::new(command_rx, ReplicationRole::Master, None, None);
     }
 }

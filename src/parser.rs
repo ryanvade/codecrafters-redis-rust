@@ -87,7 +87,7 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Option<ParserValue> {
 
     eprintln!("First Token {:?}", first);
 
-    return match first {
+    match first {
         // Simple String
         Token::Plus => {
             if let Ok(simple_string) = tokens_to_simple_string(&mut tokens_iter) {
@@ -113,7 +113,7 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Option<ParserValue> {
             None
         }
         _ => None,
-    };
+    }
 }
 
 fn tokens_to_simple_string(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Result<ParserValue> {
