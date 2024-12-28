@@ -255,6 +255,14 @@ impl DataCore {
                     eprintln!("REPLCONF Response {:?}", response);
                     command.response_channel.send(response).unwrap();
                 }
+                "psync" => {
+                    let parser_value = ParserValue::SimpleString(String::from(
+                        "FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0",
+                    ));
+                    let response = parser_value.to_tokens();
+                    eprintln!("PSYNC Response {:?}", response);
+                    command.response_channel.send(response).unwrap();
+                }
                 _ => todo!(),
             }
 
