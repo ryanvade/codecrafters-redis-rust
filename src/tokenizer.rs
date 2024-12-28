@@ -46,6 +46,10 @@ impl Token {
         matches!(self, Token::Number(_))
     }
 
+    pub fn is_hyphen(self: &Token) -> bool {
+        matches!(self, Token::Hyphen)
+    }
+
     pub fn is_asterisk(self: &Token) -> bool {
         matches!(self, Token::Asterisk)
     }
@@ -53,6 +57,7 @@ impl Token {
     pub fn to_string(self: &Token) -> Option<String> {
         match self {
             Token::String(s) => Some(s.clone()),
+            Token::Number(n) => Some(n.to_string()),
             _ => None,
         }
     }
@@ -60,6 +65,13 @@ impl Token {
     pub fn to_i64(self: &Token) -> Option<i64> {
         match self {
             Token::Number(n) => Some(n.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn to_usize(self: &Token) -> Option<usize> {
+        match self {
+            Token::Number(n) => n.clone().try_into().ok(),
             _ => None,
         }
     }

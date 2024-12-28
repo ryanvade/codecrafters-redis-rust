@@ -105,13 +105,13 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Option<ParserValue> {
             None
         }
         // Array
-        Token::Asterisk => {
-            if let Ok(arr) = tokens_to_array(&mut tokens_iter) {
-                return Some(arr);
+        Token::Asterisk => match tokens_to_array(&mut tokens_iter) {
+            Ok(arr) => Some(arr),
+            Err(err) => {
+                eprintln!("{:?}", err);
+                None
             }
-
-            None
-        }
+        },
         _ => None,
     }
 }
@@ -120,15 +120,14 @@ fn tokens_to_simple_string(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Re
     if !token_iter.next().is_some_and(|t| t.is_plus()) {
         return Err(anyhow!("first token in simple string must be a plus"));
     }
-    let str_token = token_iter
+    let mut str_token = token_iter
         .next()
         .expect("should have a second token for simple string");
-    if !str_token.is_string() {
-        return Err(anyhow!("second token in simple string must be a string"));
-    }
+
     let separator_token = token_iter
         .next()
         .expect("should have a third token for simple string");
+
     if !separator_token.is_separator() {
         return Err(anyhow!("third token in simple string must be a separator"));
     }
@@ -154,30 +153,69 @@ fn tokens_to_bulk_string(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Resu
     if !separator_token.is_separator() {
         return Err(anyhow!("third token in bulk string must be a separator"));
     }
-    let str_token = token_iter
-        .next()
-        .expect("should have a forth token for simple string");
-    if !str_token.is_string() && !str_token.is_number() {
-        return Err(anyhow!(
-            "forth token in bulk string must be a string or number"
-        ));
+    let mut str_tokens = Vec::new();
+    while token_iter.peek().is_some_and(|t| !t.is_separator()) {
+        let str_token = token_iter.next().expect("should str_token");
+        str_tokens.push(str_token);
     }
+
     let separator_token = token_iter
         .next()
         .expect("should have a fifth token for simple string");
     if !separator_token.is_separator() {
         return Err(anyhow!("fifth token in bulk string must be a separator"));
     }
-    let s = if str_token.is_string() {
-        str_token.to_string()
-    } else {
-        Some(str_token.to_i64().unwrap().to_string())
-    };
-    if s.is_none() {
-        return Err(anyhow!("could not get string from token for bulk token"));
+    let mut s = String::with_capacity(size_token.to_usize().expect("size_token must be a usize"));
+    for t in str_tokens.iter() {
+        match t {
+            Token::Plus => {
+                s.push('+');
+            }
+            Token::Hyphen => {
+                s.push('-');
+            }
+            Token::Colon => {
+                s.push(':');
+            }
+            Token::Dollar => {
+                s.push('$');
+            }
+            Token::Asterisk => {
+                s.push('*');
+            }
+            Token::Underscore => {
+                s.push('_');
+            }
+            Token::PoundSign => {
+                s.push('#');
+            }
+            Token::Comma => {
+                s.push(',');
+            }
+            Token::LeftParenthesis => {
+                s.push('(');
+            }
+            Token::Exclamation => {
+                s.push('!');
+            }
+            Token::Equals => {
+                s.push('=');
+            }
+            Token::Percentage => {
+                s.push('%');
+            }
+            Token::Tilda => {
+                s.push('~');
+            }
+            Token::GreaterThan => {
+                s.push('>');
+            }
+            Token::String(ts) => s.push_str(ts),
+            Token::Number(n) => s.push_str(n.to_string().as_str()),
+            Token::Separator => {}
+        }
     }
-    let s = s.unwrap();
-    if s.len() != size_token.to_i64().unwrap() as usize {
+    if s.len() != size_token.to_usize().expect("size_token must be a usize") {
         return Err(anyhow!("incorrect string size in bulk token"));
     }
 
@@ -243,4 +281,49 @@ fn tokens_to_array(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Result<Par
     }
 
     Ok(ParserValue::Array(values))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parses_bulk_string_with_negative_number() {
+        let tokens = vec![
+            Token::Dollar,
+            Token::Number(2),
+            Token::Separator,
+            Token::Hyphen,
+            Token::Number(1),
+            Token::Separator,
+        ];
+        let result = tokens_to_bulk_string(&mut tokens.iter().peekable());
+        assert!(result.is_ok());
+        assert_eq!(
+            ParserValue::BulkString("-1".to_string())
+                .to_string()
+                .unwrap(),
+            result.unwrap().to_string().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parses_bulk_string() {
+        let tokens = vec![
+            Token::Dollar,
+            Token::Number(5),
+            Token::Separator,
+            Token::String("PSYNC".to_string()),
+            Token::Separator,
+        ];
+
+        let result = tokens_to_bulk_string(&mut tokens.iter().peekable());
+        assert!(result.is_ok());
+        assert_eq!(
+            ParserValue::BulkString("PSYNC".to_string())
+                .to_string()
+                .unwrap(),
+            result.unwrap().to_string().unwrap()
+        );
+    }
 }
