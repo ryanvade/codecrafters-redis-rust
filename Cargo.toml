@@ -19,12 +19,12 @@ edition = "2021"
 #
 # DON'T EDIT THIS!
 [dependencies]
-anyhow = "1.0.82"
-bytes = "1.6.0"                                     # helps manage buffers
-thiserror = "1.0.59"                                # error handling
-tokio = { version = "1.37.0", features = ["full"] }
-itertools = "0.12.1"
-chrono = "0.4.38"
-time = "0.3.36" # async networking
-clap = { version = "4.5.8", features = ["derive"] }
+anyhow = "1.0.95"
+bytes = "1.9.0"                                     # helps manage buffers
+thiserror = "2.0.9"                                # error handling
+tokio = { version = "1.42.0", features = ["full"] }
+itertools = "0.13.0"
+chrono = "0.4.39"
+time = "0.3.37" # async networking
+clap = { version = "4.5.13", features = ["derive"] }
 rand = "0.8.5"
