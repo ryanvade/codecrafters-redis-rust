@@ -31,12 +31,12 @@ async fn main() {
     let mut master_host: Option<String> = None;
     let mut master_port: Option<u64> = None;
 
-    if let Some(replicaof) = args.replicaof {
-        eprintln!("Replica of {}", replicaof);
+    if let Some(replica_of) = args.replicaof {
+        eprintln!("Replica of {}", replica_of);
         replication_role = ReplicationRole::Slave;
-        let (master_host_str, master_host_port_str) = replicaof
+        let (master_host_str, master_host_port_str) = replica_of
             .split_once(' ')
-            .expect("replicaof split should have two values");
+            .expect("replica_of split should have two values");
         master_host = Some(master_host_str.to_string());
         master_port = Some(master_host_port_str.parse::<u64>().unwrap());
     }
