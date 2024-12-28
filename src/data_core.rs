@@ -349,9 +349,9 @@ impl DataCore {
         );
 
         let psync = ParserValue::Array(vec![
-            ParserValue::SimpleString("PSYNC".to_string()),
-            ParserValue::SimpleString("?".to_string()),
-            ParserValue::SimpleString("-1".to_string()),
+            ParserValue::BulkString("PSYNC".to_string()),
+            ParserValue::BulkString("?".to_string()),
+            ParserValue::BulkString("-1".to_string()),
         ]);
         let psync = tokenizer::serialize_tokens(&psync.to_tokens())
             .expect("psync parser value array should be serializable");
