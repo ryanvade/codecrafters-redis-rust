@@ -110,7 +110,7 @@ pub fn parse_resp_tokens_from_str(input: &str) -> anyhow::Result<Vec<Token>> {
                     s = s + &rest;
                 }
 
-                tokens.push(Token::Number(s.parse().unwrap()));
+                tokens.push(Token::Number(s.parse()?));
             }
             '\r' => {
                 if iter.peek().is_some_and(|s| *s == '\n') {
@@ -176,7 +176,7 @@ pub fn serialize_tokens(tokens: &Vec<Token>) -> anyhow::Result<String> {
 
     eprintln!("Serialized Tokens: {:?}", s);
 
-    return Ok(s);
+    Ok(s)
 }
 
 #[cfg(test)]

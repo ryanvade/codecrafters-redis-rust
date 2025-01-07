@@ -40,45 +40,37 @@ impl ParserValue {
     pub fn to_tokens(self: &ParserValue) -> Vec<Token> {
         match self {
             ParserValue::SimpleString(s) => {
-                let mut tokens: Vec<Token> = Vec::with_capacity(3);
-                tokens.push(Token::Plus);
-                tokens.push(Token::String(s.clone()));
-                tokens.push(Token::Separator);
-                return tokens;
+                vec![Token::Plus, Token::String(s.clone()), Token::Separator]
             }
             ParserValue::BulkString(s) => {
-                let mut tokens: Vec<Token> = Vec::with_capacity(3);
-                tokens.push(Token::Dollar);
-                tokens.push(Token::Number(s.len() as i64));
-                tokens.push(Token::Separator);
-                tokens.push(Token::String(s.clone()));
-                tokens.push(Token::Separator);
-                return tokens;
+                vec![
+                    Token::Dollar,
+                    Token::Number(s.len() as i64),
+                    Token::Separator,
+                    Token::String(s.clone()),
+                    Token::Separator,
+                ]
             }
             ParserValue::Array(arr) => {
-                let mut tokens: Vec<Token> = Vec::with_capacity(3);
-                tokens.push(Token::Asterisk);
-                tokens.push(Token::Number(arr.len() as i64));
-                tokens.push(Token::Separator);
+                let mut tokens = vec![
+                    Token::Asterisk,
+                    Token::Number(arr.len() as i64),
+                    Token::Separator,
+                ];
                 for parser_value in arr {
                     tokens.append(&mut parser_value.to_tokens());
                 }
-                return tokens;
+                tokens
             }
             ParserValue::NullBulkString => {
-                let mut tokens: Vec<Token> = Vec::with_capacity(3);
-                tokens.push(Token::Dollar);
-                tokens.push(Token::Number(-1));
-                tokens.push(Token::Separator);
-                return tokens;
+                vec![Token::Dollar, Token::Number(-1), Token::Separator]
             }
-            _ => todo!(),
         }
     }
 }
 
-pub fn parse_tokens(tokens: &Vec<Token>) -> Option<ParserValue> {
-    if tokens.len() < 1 {
+pub fn parse_tokens(tokens: &[Token]) -> Option<ParserValue> {
+    if tokens.is_empty() {
         return None;
     }
 
@@ -120,7 +112,7 @@ fn tokens_to_simple_string(token_iter: &mut Peekable<Iter<Token>>) -> anyhow::Re
     if !token_iter.next().is_some_and(|t| t.is_plus()) {
         return Err(anyhow!("first token in simple string must be a plus"));
     }
-    let mut str_token = token_iter
+    let str_token = token_iter
         .next()
         .expect("should have a second token for simple string");
 
@@ -289,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_parses_bulk_string_with_negative_number() {
-        let tokens = vec![
+        let tokens = [
             Token::Dollar,
             Token::Number(2),
             Token::Separator,
@@ -309,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_parses_bulk_string() {
-        let tokens = vec![
+        let tokens = [
             Token::Dollar,
             Token::Number(5),
             Token::Separator,
